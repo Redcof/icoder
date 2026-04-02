@@ -1,0 +1,22 @@
+[project]
+name = "icoder"
+version = "0.1.0"
+description = "A toolchain to help you analyze your codebase and generate documentation, unittests, and more."
+authors = [{ name = "Soumen Sardar", email = "soumensardarintmain@gmail.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[tools]==1.12.2"
+]
+
+[project.scripts]
+kickoff = "icoder.main:kickoff"
+run_crew = "icoder.main:kickoff"
+plot = "icoder.main:plot"
+run_with_trigger = "icoder.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "flow"
