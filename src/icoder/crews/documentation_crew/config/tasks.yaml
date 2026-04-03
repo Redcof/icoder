@@ -1,0 +1,22 @@
+documentation_task:
+  description: >
+    Using python input source code, generate high-quality Google-style docstrings 
+    for all identified functions and classes. Ensure technical accuracy 
+    based on the function's logic. Do not add docstrings to functions that already have them.
+    
+    Here is python source code to be documented:
+
+    {source_code}
+  expected_output: >
+    A structured content (JSON) with modified file content.
+  agent: documentation_specialist
+
+# verification_task:
+#   description: >
+#     Execute the generated tests using pytest-cov. Analyze the coverage report. 
+#     If coverage is below {threshold}%, identify the missing lines.
+#   expected_output: >
+#     A final summary report detailing total coverage percentage and a list 
+#     of any files that failed to meet the threshold.
+#   agent: quality_assurance_agent
+#   context: [testing_task]

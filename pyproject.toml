@@ -5,7 +5,7 @@ description = "A toolchain to help you analyze your codebase and generate docume
 authors = [{ name = "Soumen Sardar", email = "soumensardarintmain@gmail.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "crewai[tools]==1.12.2"
+    "crewai[litellm,tools]==1.12.2",
 ]
 
 [project.scripts]

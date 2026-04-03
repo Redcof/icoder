@@ -1,21 +1,32 @@
 #!/usr/bin/env python
-import asyncio
 import os
-
-from crewai import tasks
+from crewai import CrewOutput
 from crewai.flow import Flow, listen, start, router, and_, or_
-from icoder.crews.poem_crew.poem_crew import PoemCrew
 from pydantic import BaseModel
 from pathlib import Path
 
-class iCoderState(BaseModel):
-    current_file: str = ""
+from icoder.crews.unittest_crew.unittest_crew import UnittestCrew
+from icoder.crews.documentation_crew.documentation_crew import DocumentationCrew
+
+class FileState(BaseModel):
+    is_valid_file: bool = False
     is_documentated: bool = False
     is_unittests_added: bool = False
-    is_unittested: bool = False
-    is_valid_file: bool = True
 
+class iCoderState(BaseModel):
+    current_file: str = ""
+    current_file_content: str = ""
+    file_state: FileState = FileState()
+    counter: int = 0
+    
 
+class iCoderFlowState:
+    START: str = "START"
+    SELECT: str = "SELECT"
+    CONTINUE: str = "CONTINUE"
+    NEXT: str = "NEXT"
+    ERROR: str = "ERROR"
+    END: str = "END"
 
 class FileNavigator:
     def __init__(self, root_dir, type_filter="*.py"):
@@ -27,58 +38,104 @@ class FileNavigator:
         path_obj = Path(self.root_dir)
         # rglob returns a generator, not a list!
         for file_path in path_obj.rglob(self.type_filter):
+            # skip test files and files in unittest directories
+            if "unittests" in str(file_path) or os.path.basename(str(file_path)).startswith("test_"):
+                continue
             yield str(file_path)
 
 class iCoderFlow(Flow[iCoderState]):
     
     def __init__(self, *args, **kwargs):
-        if "file" in kwargs.keys():
-            file = kwargs.pop("file")
+        if "root_dir" in kwargs.keys():
+            root_dir = kwargs.pop("root_dir", None)
         super().__init__(*args, **kwargs)
-        self.state.current_file = file
+        self.generator = FileNavigator(root_dir, type_filter="*.py").stream_files()
+    
+    def reset_filestate(self):
+        self.state.file_state = FileState()
     
     @start()
-    def process_file(self):
-        self.state.is_valid_file = os.path.isfile(self.state.current_file)
-        print(f"--- Processing: {self.state.current_file} ---")
+    def process_project(self) -> str:
+        self.state.file_state.is_valid_file = os.path.isfile(self.state.current_file)
+    
+    @router(or_(process_project, iCoderFlowState.NEXT))
+    def process_next_file(self) -> str:
+        try:
+            self.state.current_file = next(self.generator)
+            self.reset_filestate()
+            self.state.file_state.is_valid_file = os.path.isfile(self.state.current_file)
+            self.state.current_file_content = open(self.state.current_file).read()
+            return iCoderFlowState.SELECT
+        except StopIteration:
+            return iCoderFlowState.END
 
-    @router(process_file)
-    def verify(self):
-        if self.state.is_valid_file:
-            return "CONTINUE"
+    @router(iCoderFlowState.SELECT)
+    def verify(self) -> str:
+        if self.state.file_state.is_valid_file:
+            self.state.counter += 1
+            return iCoderFlowState.CONTINUE
         else:
-            return "ERROR"
+            return iCoderFlowState.ERROR
 
+    def save_file(content:str, file_path: str):
+        try:
+            open(file_path, "w").write(content)
+        except Exception as e:
+            raise e
     
-    @listen("CONTINUE")
+    def update_documentation(self, documented_code: str):
+        self.save_file(documented_code, self.state.current_file)
+        self.state.file_state.is_documentated = True
+    
+    def update_unittests(self, unittests_code: str):
+        module_path = os.path.dirname(self.state.current_file)
+        test_dir = os.path.join(module_path, "unittests")
+        os.makedirs(test_dir, exist_ok=True)
+        test_file_path = os.path.join(test_dir, f"test_{os.path.basename(self.state.current_file)}")
+        self.save_file(unittests_code, test_file_path)
+        self.state.file_state.is_unittests_added = True
+    
+    @listen(iCoderFlowState.CONTINUE)
     def documentation_task(self):
-        print(f"Documenting: {self.state.current_file}")
-        # Simulate documentation work here
-        self.state.is_documentated = True
+        raw_output = None
+        try:
+            raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
+            self.update_documentation(raw_output.pydantic.content)
+        except Exception:
+            open(self.state.current_file+".documentation.error", "w").write(f"{type(raw_output)}\n\n{raw_output.raw}")
+            return iCoderFlowState.ERROR
     
-    @listen("CONTINUE")
+    @listen(iCoderFlowState.CONTINUE)
     def unittest_task(self):
-        print(f"Adding unittests: {self.state.current_file}")
-        # Simulate unittest work here
-        self.state.is_unittests_added = True
+        raw_output = None
+        try:
+            raw_output = UnittestCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
+            self.update_unittests(raw_output.pydantic.content)
+        except Exception:
+            open(self.state.current_file+".unittests.error", "w").write(f"{type(raw_output)}\n\n{raw_output.raw}")
+            return iCoderFlowState.ERROR
+
+    @router(or_(and_(documentation_task, unittest_task)))
+    def move_next(self) -> str:
+        return iCoderFlowState.NEXT
+
+    @router(iCoderFlowState.ERROR)
+    def handle_error(self) -> str:
+        # restore source code if any error occurs during documentation or unittest generation
+        self.save_file(self.state.current_file_content, self.state.current_file)
+        return iCoderFlowState.END
     
-    @listen(or_(and_(documentation_task, unittest_task), "ERROR"))
-    def end(self):
-        # Automatically pick the next file after processing the current one
-        print(f"Finished processing: {self.state.current_file}")
-        return 
+    @listen(iCoderFlowState.END)
+    def finish(self):
+        pass
 
 
 def kickoff():
-    generator = FileNavigator("src", type_filter="*.py").stream_files()
-    def process_with_flow(file):
-        flow = iCoderFlow(file=file)
-        return flow.kickoff()
-    for file in generator:
-        process_with_flow(file)
+    flow = iCoderFlow(root_dir="sandbox")
+    flow.kickoff()
 
 def plot():
-    poem_flow = iCoderFlow(file=None)
+    poem_flow = iCoderFlow(root_dir="sandbox")
     poem_flow.plot()
 
 

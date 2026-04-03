@@ -1,0 +1,23 @@
+testing_task:
+  description: >
+    Generate pytest-compatible unit tests for all functions identified 
+    in the python source code. Focus on edge cases and logic branches to maximize coverage.
+    Do not miss any function or class that requires testing. 
+    Ensure that the generated tests are robust and can effectively identify potential issues in the code.
+
+    Here is python source code to:
+
+    {source_code}
+  expected_output: >
+    A structured content (JSON) with the generated unittest source code.
+  agent: test_engineer
+
+# verification_task:
+#   description: >
+#     Execute the generated tests using pytest-cov. Analyze the coverage report. 
+#     If coverage is below {threshold}%, identify the missing lines.
+#   expected_output: >
+#     A final summary report detailing total coverage percentage and a list 
+#     of any files that failed to meet the threshold.
+#   agent: quality_assurance_agent
+#   context: [testing_task]
