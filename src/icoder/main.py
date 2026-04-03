@@ -47,39 +47,25 @@ class iCoderFlow(Flow[iCoderState]):
     
     def __init__(self, *args, **kwargs):
         if "root_dir" in kwargs.keys():
-            root_dir = kwargs.pop("root_dir", None)
+            self.root_dir = kwargs.pop("root_dir", None)
         super().__init__(*args, **kwargs)
-        self.generator = FileNavigator(root_dir, type_filter="*.py").stream_files()
-    
-    def reset_filestate(self):
-        self.state.file_state = FileState()
-    
-    @start()
-    def process_project(self) -> str:
-        self.state.file_state.is_valid_file = os.path.isfile(self.state.current_file)
-    
-    @router(or_(process_project, iCoderFlowState.NEXT))
-    def process_next_file(self) -> str:
-        try:
-            self.state.current_file = next(self.generator)
-            self.reset_filestate()
-            self.state.file_state.is_valid_file = os.path.isfile(self.state.current_file)
-            self.state.current_file_content = open(self.state.current_file).read()
-            return iCoderFlowState.SELECT
-        except StopIteration:
-            return iCoderFlowState.END
-
-    @router(iCoderFlowState.SELECT)
-    def verify(self) -> str:
-        if self.state.file_state.is_valid_file:
-            self.state.counter += 1
-            return iCoderFlowState.CONTINUE
-        else:
-            return iCoderFlowState.ERROR
-
+        
+    @staticmethod
     def save_file(content:str, file_path: str):
         try:
             open(file_path, "w").write(content)
+        except Exception as e:
+            raise e
+    
+    @staticmethod
+    def save_error_log(e, raw_output, prefix: str, file_path: str):
+        os.makedirs("flow_errors", exist_ok=True)
+        error_log_path = os.path.join("flow_errors", f"{os.path.basename(file_path)}.{prefix}.error")
+        try:
+            if raw_output and isinstance(raw_output, CrewOutput):
+                open(error_log_path, "w").write(f"Error: {e}\n\n{raw_output.raw}")
+            else:
+                open(error_log_path, "w").write(f"Error: {e}\n\n{raw_output}")
         except Exception as e:
             raise e
     
@@ -95,37 +81,74 @@ class iCoderFlow(Flow[iCoderState]):
         self.save_file(unittests_code, test_file_path)
         self.state.file_state.is_unittests_added = True
     
-    @listen(iCoderFlowState.CONTINUE)
-    def documentation_task(self):
+    def is_documentation_done(self) -> bool:
+        """Using interrogate verify if the current file is already well documented, 
+        if yes skip documentation task."""
+        from interrogate import coverage
+        doc_coverage = coverage.InterrogateCoverage(paths=[self.state.current_file])
+        results = doc_coverage.get_coverage()
+        return results.missing == 0
+    
+    def reset_filestate(self):
+        self.state.file_state = FileState()
+    
+    @start()
+    def process_project(self) -> str:
+        self.generator = FileNavigator(self.root_dir, type_filter="*.py").stream_files()
+    
+    @router(or_(process_project, "NEXT"))
+    def process_next_file(self) -> str:
+        try:
+            self.state.current_file = next(self.generator)
+            self.reset_filestate()
+            self.state.file_state.is_valid_file = os.path.isfile(self.state.current_file)
+            self.state.current_file_content = open(self.state.current_file).read()
+            return "SELECT"
+        except StopIteration:
+            return "END"
+
+    @router("SELECT")
+    def verify(self) -> str:
+        if self.state.file_state.is_valid_file:
+            self.state.counter += 1
+            return "CONTINUE"
+        else:
+            return "ERROR"
+    
+    @router("CONTINUE")
+    def documentation_task(self) -> str:
         raw_output = None
         try:
+            if self.is_documentation_done():
+                self.state.file_state.is_documentated = True
+                return
             raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
             self.update_documentation(raw_output.pydantic.content)
-        except Exception:
-            open(self.state.current_file+".documentation.error", "w").write(f"{type(raw_output)}\n\n{raw_output.raw}")
-            return iCoderFlowState.ERROR
+        except Exception as e:
+            self.save_error_log(e, raw_output, "documentation", self.state.current_file)
+            return "ERROR"
     
-    @listen(iCoderFlowState.CONTINUE)
-    def unittest_task(self):
+    @router("CONTINUE")
+    def unittest_task(self) -> str:
         raw_output = None
         try:
             raw_output = UnittestCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
             self.update_unittests(raw_output.pydantic.content)
-        except Exception:
-            open(self.state.current_file+".unittests.error", "w").write(f"{type(raw_output)}\n\n{raw_output.raw}")
-            return iCoderFlowState.ERROR
+        except Exception as e:
+            self.save_error_log(e, raw_output, "unittests", self.state.current_file)
+            return "ERROR"
 
-    @router(or_(and_(documentation_task, unittest_task)))
+    @router(and_(documentation_task, unittest_task))
     def move_next(self) -> str:
-        return iCoderFlowState.NEXT
+        return "NEXT"
 
-    @router(iCoderFlowState.ERROR)
+    @router("ERROR")
     def handle_error(self) -> str:
         # restore source code if any error occurs during documentation or unittest generation
-        self.save_file(self.state.current_file_content, self.state.current_file)
-        return iCoderFlowState.END
+        # self.save_file(self.state.current_file_content, self.state.current_file)
+        return "END"
     
-    @listen(iCoderFlowState.END)
+    @listen("END")
     def finish(self):
         pass
 

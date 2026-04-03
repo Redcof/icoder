@@ -6,6 +6,7 @@ authors = [{ name = "Soumen Sardar", email = "soumensardarintmain@gmail.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "crewai[litellm,tools]==1.12.2",
+    "interrogate>=1.7.0",
 ]
 
 [project.scripts]
