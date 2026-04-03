@@ -3,6 +3,9 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from pydantic import BaseModel, Field
 
+
+from icoder.crews.utils import get_llm
+
 class UnittestCode(BaseModel):
     """Represents a unittest for the input source code content formated as a plain ASCII string."""
     content: str = Field(..., description="The generated unittest code")
@@ -19,6 +22,7 @@ class UnittestCrew():
         return Agent(
             config=self.agents_config['test_engineer'],
             output_pydantic=UnittestCode,
+            llm=get_llm(),
             verbose=True
         )
         

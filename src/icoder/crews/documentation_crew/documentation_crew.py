@@ -3,6 +3,8 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from pydantic import BaseModel, Field
 
+from icoder.crews.utils import get_llm
+
 class DocumentedCode(BaseModel):
     """Represents a well documented source code content formated as a plain ASCII string."""
     content: str = Field(..., description="The documented and updated python source code")
@@ -19,6 +21,7 @@ class DocumentationCrew():
         return Agent(
             config=self.agents_config['documentation_specialist'],
             output_pydantic=DocumentedCode,
+            llm=get_llm(),
             verbose=True
         )
         

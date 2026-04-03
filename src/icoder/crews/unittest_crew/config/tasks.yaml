@@ -3,7 +3,10 @@ testing_task:
     Generate pytest-compatible unit tests for all functions identified 
     in the python source code. Focus on edge cases and logic branches to maximize coverage.
     Do not miss any function or class that requires testing. 
+    Add proper import statement for the module being tested.
     Ensure that the generated tests are robust and can effectively identify potential issues in the code.
+
+    Here is the source path: "{source_path}"
 
     Here is python source code to:
 

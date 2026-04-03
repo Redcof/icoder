@@ -39,7 +39,9 @@ class FileNavigator:
         # rglob returns a generator, not a list!
         for file_path in path_obj.rglob(self.type_filter):
             # skip test files and files in unittest directories
-            if "unittests" in str(file_path) or os.path.basename(str(file_path)).startswith("test_"):
+            if ("tests/" in str(file_path) 
+                or "tests\\" in str(file_path) 
+                or os.path.basename(str(file_path)).startswith("test_")):
                 continue
             yield str(file_path)
 
@@ -48,6 +50,9 @@ class iCoderFlow(Flow[iCoderState]):
     def __init__(self, *args, **kwargs):
         if "root_dir" in kwargs.keys():
             self.root_dir = kwargs.pop("root_dir", None)
+        assert self.root_dir is not None, "`root_dir` must be provided to {self.__class__.__name__}"
+        if "flow_test" in kwargs.keys():
+            self.flow_test = kwargs.pop("flow_test", False)
         super().__init__(*args, **kwargs)
         
     @staticmethod
@@ -74,20 +79,21 @@ class iCoderFlow(Flow[iCoderState]):
         self.state.file_state.is_documentated = True
     
     def update_unittests(self, unittests_code: str):
+        """For a given source path follow the same directory 
+        structure but locate the testfile under tests/ directory. 
+        For example if the source file is project_root/src/module1/utils.py 
+        then the test file will be located at project_root/tests/src/module1/test_utils.py"""
+        
         module_path = os.path.dirname(self.state.current_file)
-        test_dir = os.path.join(module_path, "unittests")
+        project_dir = self.root_dir
+        if module_path.startswith(project_dir):
+            module_path = module_path[len(project_dir):].lstrip("/\\")
+        test_dir = os.path.join(project_dir, "tests", module_path)
         os.makedirs(test_dir, exist_ok=True)
         test_file_path = os.path.join(test_dir, f"test_{os.path.basename(self.state.current_file)}")
         self.save_file(unittests_code, test_file_path)
         self.state.file_state.is_unittests_added = True
     
-    def is_documentation_done(self) -> bool:
-        """Using interrogate verify if the current file is already well documented, 
-        if yes skip documentation task."""
-        from interrogate import coverage
-        doc_coverage = coverage.InterrogateCoverage(paths=[self.state.current_file])
-        results = doc_coverage.get_coverage()
-        return results.missing == 0
     
     def reset_filestate(self):
         self.state.file_state = FileState()
@@ -108,7 +114,7 @@ class iCoderFlow(Flow[iCoderState]):
             return "END"
 
     @router("SELECT")
-    def verify(self) -> str:
+    def check_file(self) -> str:
         if self.state.file_state.is_valid_file:
             self.state.counter += 1
             return "CONTINUE"
@@ -116,14 +122,28 @@ class iCoderFlow(Flow[iCoderState]):
             return "ERROR"
     
     @router("CONTINUE")
+    def is_documentation_done(self) -> bool:
+        """Using interrogate verify if the current file is already well documented, 
+        if yes skip documentation task."""
+        from interrogate import coverage
+        doc_coverage = coverage.InterrogateCoverage(paths=[self.state.current_file])
+        results = doc_coverage.get_coverage()
+        if results.missing == 0:
+            self.state.file_state.is_documentated = True
+            return "DOCUMENTATION_DONE"
+        return "GENERATE_DOCUMENTATION"
+    
+    @router("GENERATE_DOCUMENTATION")
     def documentation_task(self) -> str:
         raw_output = None
         try:
-            if self.is_documentation_done():
-                self.state.file_state.is_documentated = True
-                return
-            raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
-            self.update_documentation(raw_output.pydantic.content)
+            if self.flow_test is False:
+                raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
+                updated_content = raw_output.pydantic.content
+            else:
+                updated_content = self.state.current_file_content
+            self.update_documentation(updated_content)
+            return "DOCUMENTATION_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "documentation", self.state.current_file)
             return "ERROR"
@@ -132,17 +152,25 @@ class iCoderFlow(Flow[iCoderState]):
     def unittest_task(self) -> str:
         raw_output = None
         try:
-            raw_output = UnittestCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
-            self.update_unittests(raw_output.pydantic.content)
+            if self.flow_test is False:
+                raw_output = UnittestCrew().crew().kickoff(inputs={
+                    "source_code": self.state.current_file_content,
+                    "source_path": self.state.current_file
+                    })
+                updated_content = raw_output.pydantic.content
+            else:
+                updated_content = self.state.current_file_content
+            self.update_unittests(updated_content)
+            return "UNITTESTS_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "unittests", self.state.current_file)
             return "ERROR"
 
-    @router(and_(documentation_task, unittest_task))
+    @router(and_("DOCUMENTATION_DONE", "UNITTESTS_DONE"))
     def move_next(self) -> str:
         return "NEXT"
 
-    @router("ERROR")
+    @listen("ERROR")
     def handle_error(self) -> str:
         # restore source code if any error occurs during documentation or unittest generation
         # self.save_file(self.state.current_file_content, self.state.current_file)
@@ -154,11 +182,11 @@ class iCoderFlow(Flow[iCoderState]):
 
 
 def kickoff():
-    flow = iCoderFlow(root_dir="sandbox")
+    flow = iCoderFlow(root_dir="sandbox", flow_test=True)
     flow.kickoff()
 
 def plot():
-    poem_flow = iCoderFlow(root_dir="sandbox")
+    poem_flow = iCoderFlow(root_dir="sandbox", flow_test=True)
     poem_flow.plot()
 
 
