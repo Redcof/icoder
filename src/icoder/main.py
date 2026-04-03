@@ -4,7 +4,9 @@ from crewai import CrewOutput
 from crewai.flow import Flow, listen, start, router, and_, or_
 from pydantic import BaseModel
 from pathlib import Path
-
+import coverage
+import pytest
+import sys
 from icoder.crews.unittest_crew.unittest_crew import UnittestCrew
 from icoder.crews.documentation_crew.documentation_crew import DocumentationCrew
 
@@ -78,7 +80,7 @@ class iCoderFlow(Flow[iCoderState]):
         self.save_file(documented_code, self.state.current_file)
         self.state.file_state.is_documentated = True
     
-    def update_unittests(self, unittests_code: str):
+    def get_unitetst_path(self) -> str:
         """For a given source path follow the same directory 
         structure but locate the testfile under tests/ directory. 
         For example if the source file is project_root/src/module1/utils.py 
@@ -91,6 +93,15 @@ class iCoderFlow(Flow[iCoderState]):
         test_dir = os.path.join(project_dir, "tests", module_path)
         os.makedirs(test_dir, exist_ok=True)
         test_file_path = os.path.join(test_dir, f"test_{os.path.basename(self.state.current_file)}")
+        return test_file_path
+    
+    def update_unittests(self, unittests_code: str):
+        """For a given source path follow the same directory 
+        structure but locate the testfile under tests/ directory. 
+        For example if the source file is project_root/src/module1/utils.py 
+        then the test file will be located at project_root/tests/src/module1/test_utils.py"""
+
+        test_file_path = self.get_unitetst_path()
         self.save_file(unittests_code, test_file_path)
         self.state.file_state.is_unittests_added = True
     
@@ -121,7 +132,7 @@ class iCoderFlow(Flow[iCoderState]):
         else:
             return "ERROR"
     
-    @router("CONTINUE")
+    @listen("CONTINUE")
     def is_documentation_done(self):
         """Using interrogate verify if the current file is already well documented, 
         if yes skip documentation task."""
@@ -131,34 +142,61 @@ class iCoderFlow(Flow[iCoderState]):
         if results.missing == 0:
             self.state.file_state.is_documentated = True
     
-    @listen(is_documentation_done)
+    @router(is_documentation_done)
     def documentation_task(self) -> str:
         raw_output = None
         try:
-            updated_content = self.state.current_file_content
             if self.flow_test is False:
                 if not self.state.file_state.is_documentated:
                     raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
                     updated_content = raw_output.pydantic.content
-            self.update_documentation(updated_content)
+                    self.update_documentation(updated_content)
         except Exception as e:
             self.save_error_log(e, raw_output, "documentation", self.state.current_file)
             return "ERROR"
     
-    @router("CONTINUE")
+    @listen("CONTINUE")
+    def is_unittests_done(self) -> str:
+        """Check if unittest already exists for the current file, if yes skip unittest task."""
+        source_file = self.state.current_file
+        test_file = self.get_unitetst_path()
+
+        # 1. Initialize coverage, specifying which file to monitor
+        # We use 'include' to ensure we only care about the target file
+        cov = coverage.Coverage(include=[source_file])
+        
+        # 2. Start measuring
+        cov.start()
+
+        # 3. Run the tests via pytest
+        # We pass the test_file path to pytest.main
+        sys.path.insert(0, os.path.dirname(source_file))  # Ensure the test file's directory is in the path
+        exit_code = pytest.main([test_file, "-q"])
+        if exit_code != 0:
+            self.state.file_state.is_unittests_added = False
+
+        # 4. Stop measuring
+        cov.stop()
+        cov.save()
+
+        if exit_code == 0:
+            # 5. Extract results
+            # This generates a summary of the coverage
+            percentage = cov.report(file=sys.stdout)
+            self.state.file_state.is_unittests_added = int(percentage) == 100
+    
+    @router(is_unittests_done)
     def unittest_task(self) -> str:
         raw_output = None
         try:
             if self.flow_test is False:
-                raw_output = UnittestCrew().crew().kickoff(inputs={
-                    "source_code": self.state.current_file_content,
-                    "source_path": self.state.current_file
-                    })
-                updated_content = raw_output.pydantic.content
-            else:
-                updated_content = self.state.current_file_content
-            self.update_unittests(updated_content)
-            return "UNITTESTS_DONE"
+                if not self.state.file_state.is_unittests_added:
+                    raw_output = UnittestCrew().crew().kickoff(inputs={
+                        "source_code": self.state.current_file_content,
+                        "source_path": self.state.current_file
+                        })
+                    updated_content = raw_output.pydantic.content
+                    self.update_unittests(updated_content)
         except Exception as e:
             self.save_error_log(e, raw_output, "unittests", self.state.current_file)
             return "ERROR"
