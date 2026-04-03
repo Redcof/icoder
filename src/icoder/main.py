@@ -122,7 +122,7 @@ class iCoderFlow(Flow[iCoderState]):
             return "ERROR"
     
     @router("CONTINUE")
-    def is_documentation_done(self) -> bool:
+    def is_documentation_done(self):
         """Using interrogate verify if the current file is already well documented, 
         if yes skip documentation task."""
         from interrogate import coverage
@@ -130,20 +130,17 @@ class iCoderFlow(Flow[iCoderState]):
         results = doc_coverage.get_coverage()
         if results.missing == 0:
             self.state.file_state.is_documentated = True
-            return "DOCUMENTATION_DONE"
-        return "GENERATE_DOCUMENTATION"
     
-    @router("GENERATE_DOCUMENTATION")
+    @listen(is_documentation_done)
     def documentation_task(self) -> str:
         raw_output = None
         try:
+            updated_content = self.state.current_file_content
             if self.flow_test is False:
-                raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
-                updated_content = raw_output.pydantic.content
-            else:
-                updated_content = self.state.current_file_content
+                if not self.state.file_state.is_documentated:
+                    raw_output = DocumentationCrew().crew().kickoff(inputs={"source_code": self.state.current_file_content})
+                    updated_content = raw_output.pydantic.content
             self.update_documentation(updated_content)
-            return "DOCUMENTATION_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "documentation", self.state.current_file)
             return "ERROR"
@@ -166,11 +163,11 @@ class iCoderFlow(Flow[iCoderState]):
             self.save_error_log(e, raw_output, "unittests", self.state.current_file)
             return "ERROR"
 
-    @router(and_("DOCUMENTATION_DONE", "UNITTESTS_DONE"))
+    @router(and_(documentation_task, unittest_task))
     def move_next(self) -> str:
         return "NEXT"
 
-    @listen("ERROR")
+    @router("ERROR")
     def handle_error(self) -> str:
         # restore source code if any error occurs during documentation or unittest generation
         # self.save_file(self.state.current_file_content, self.state.current_file)
@@ -178,6 +175,7 @@ class iCoderFlow(Flow[iCoderState]):
     
     @listen("END")
     def finish(self):
+        print(f"Flow completed. Processed {self.state.counter} files.")
         pass
 
 
