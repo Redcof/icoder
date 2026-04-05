@@ -5,10 +5,13 @@ description = "A toolchain to help you analyze your codebase and generate docume
 authors = [{ name = "Soumen Sardar", email = "soumensardarintmain@gmail.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
+    "astroid>=4.1.2",
     "coverage>=7.13.5",
     "crewai[litellm,tools]==1.12.2",
     "interrogate>=1.7.0",
+    "libcst>=1.8.6",
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
 ]
 
 [project.scripts]

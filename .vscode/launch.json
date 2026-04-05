@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "src/icoder/main.py",
             "console": "integratedTerminal",
-            "args": ""
+            "args": "/Users/soumensardar/Documents/icoder/sandbox"
         }
     ]
 }
