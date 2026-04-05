@@ -16,6 +16,7 @@ kickoff = "icoder.main:kickoff"
 run_crew = "icoder.main:kickoff"
 plot = "icoder.main:plot"
 run_with_trigger = "icoder.main:run_with_trigger"
+icoder = "icoder.main:main"
 
 [build-system]
 requires = ["hatchling"]

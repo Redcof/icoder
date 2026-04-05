@@ -90,14 +90,14 @@ class iCoderFlow(Flow[iCoderState]):
         os.makedirs(test_dir, exist_ok=True)
         return test_dir
 
-    def update_unittests(self, unittests_code: str, module_imports: str):
+    def update_unittests(self, unittests_code: str):
         """For a given source path follow the same directory 
         structure but locate the testfile under tests/ directory. 
         For example if the source file is project_root/src/module1/utils.py 
         then the test file will be located at project_root/tests/src/module1/test_utils.py"""
 
         test_file_path = self.get_unitest_path()
-        self.save_file(module_imports + "\n\n" + unittests_code, test_file_path)
+        self.save_file(unittests_code, test_file_path)
         self.state.file_flags.is_unittests_added = True
 
     def reset_file_flags(self):
@@ -207,8 +207,7 @@ class iCoderFlow(Flow[iCoderState]):
                         "source_path": self.state.current_file.replace(self.root_dir, "").strip("/").strip("\\"),
                     })
                     updated_content = raw_output.pydantic.content
-                    module_imports = raw_output.pydantic.imports
-                    self.update_unittests(updated_content, module_imports)
+                    self.update_unittests(updated_content)
             return "TEST_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "unittests", self.state.current_file)
@@ -278,5 +277,15 @@ def run_with_trigger():
         raise Exception(f"An error occurred while running the flow with trigger: {e}")
 
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Path to the project directory to process")
+    parser.add_argument("project", metavar="path/to/project", help="The path to the project directory")
+    args = parser.parse_args()
+    flow = iCoderFlow(root_dir=args.project, flow_test=False)
+    r = flow.kickoff()
+    print("Run the commands below to check the unittests:")
+    print(r['unittest_cmd'])
+
 if __name__ == "__main__":
-    kickoff()
+    main()
