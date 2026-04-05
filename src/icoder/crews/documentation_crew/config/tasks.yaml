@@ -3,6 +3,8 @@ documentation_task:
     Using python input source code, generate high-quality Google-style docstrings 
     for all identified functions and classes. Ensure technical accuracy 
     based on the function's logic. Do not add docstrings to functions that already have them.
+    The source code may contain pre-documented functions. Add module-level docstring if missing.
+    Do not modify the pre-documented functions. Only add missing docstring.
     
     Here is python source code to be documented:
 

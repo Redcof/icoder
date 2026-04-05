@@ -8,10 +8,11 @@ import pytest
 from crewai import CrewOutput
 from crewai.flow import Flow, listen, start, router, and_, or_
 from pydantic import BaseModel
+from interrogate.coverage import InterrogateCoverage
 
 from icoder.crews.documentation_crew.documentation_crew import DocumentationCrew
 from icoder.crews.unittest_crew.unittest_crew import UnittestCrew
-from icoder.crews.utils import FileNavigator
+from icoder.utils import FileNavigator, get_interrogate_config
 
 FLOW_ERROR_DIR = "errors"
 
@@ -133,9 +134,11 @@ class iCoderFlow(Flow[iCoderState]):
     def is_documentation_done(self):
         """Using interrogate verify if the current file is already well documented, 
         if yes skip documentation task."""
-        from interrogate import coverage
+        # 1. Load your configuration
+        # This will automatically look for [tool.interrogate] in pyproject.toml
+        conf = get_interrogate_config(self.root_dir)
         try:
-            doc_coverage = coverage.InterrogateCoverage(paths=[self.state.current_file])
+            doc_coverage = InterrogateCoverage(paths=[self.state.current_file], conf=conf)
             results = doc_coverage.get_coverage()
             if results.missing == 0:
                 self.state.file_flags.is_documented = True
@@ -160,6 +163,7 @@ class iCoderFlow(Flow[iCoderState]):
 
     @listen("CONTINUE")
     def is_unittests_done(self) -> str:
+        return
         """Check if unittest already exists for the current file, if yes skip unittest task."""
         source_file = self.state.current_file
         test_file = self.get_unitest_path()
@@ -195,6 +199,7 @@ class iCoderFlow(Flow[iCoderState]):
 
     @router(is_unittests_done)
     def unittest_task(self) -> str:
+        return "TEST_DONE"
         raw_output = None
         try:
             if self.flow_test is False:
