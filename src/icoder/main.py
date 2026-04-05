@@ -163,7 +163,6 @@ class iCoderFlow(Flow[iCoderState]):
 
     @listen("CONTINUE")
     def is_unittests_done(self) -> str:
-        return
         """Check if unittest already exists for the current file, if yes skip unittest task."""
         source_file = self.state.current_file
         test_file = self.get_unitest_path()
@@ -199,7 +198,6 @@ class iCoderFlow(Flow[iCoderState]):
 
     @router(is_unittests_done)
     def unittest_task(self) -> str:
-        return "TEST_DONE"
         raw_output = None
         try:
             if self.flow_test is False:
