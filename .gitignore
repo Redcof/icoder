@@ -4,3 +4,4 @@ lib/
 .DS_Store
 /sandbox
 .idea
+.ipynb_checkpoints
