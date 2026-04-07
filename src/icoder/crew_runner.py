@@ -1,6 +1,8 @@
 from crewai import Crew, Process
+
 from icoder.docstring_agent import make_docstring_agent, make_docstring_task
 from icoder.test_agent import make_test_agent, make_test_task
+
 
 def run_docstring_crew(missing_docstrings: list) -> dict:
     """Returns {file_path: {func_name: docstring}}"""
@@ -14,11 +16,12 @@ def run_docstring_crew(missing_docstrings: list) -> dict:
         verbose=True,
     )
     results = crew.kickoff()
-    
+
     output = {}
     for fn, result in zip(missing_docstrings, results if isinstance(results, list) else [results]):
         output.setdefault(fn.file_path, {})[fn.name] = str(result)
     return output
+
 
 def run_test_crew(untested_functions: list) -> dict:
     """Returns {file_path: test_code_string}"""

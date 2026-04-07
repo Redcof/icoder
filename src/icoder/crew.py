@@ -7,8 +7,8 @@ import coverage
 import pytest
 from crewai import CrewOutput
 from crewai.flow import Flow, listen, start, router, and_, or_
-from pydantic import BaseModel
 from interrogate.coverage import InterrogateCoverage
+from pydantic import BaseModel
 
 from icoder.crews.documentation_crew.documentation_crew import DocumentationCrew
 from icoder.crews.unittest_crew.unittest_crew import UnittestCrew
@@ -286,6 +286,7 @@ def main():
     r = flow.kickoff()
     print("Run the commands below to check the unittests:")
     print(r['unittest_cmd'])
+
 
 if __name__ == "__main__":
     main()

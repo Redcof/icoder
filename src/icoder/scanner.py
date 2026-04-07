@@ -3,6 +3,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+from icoder.utils import FileNavigator
+
+
 @dataclass
 class FunctionInfo:
     name: str
@@ -14,22 +17,26 @@ class FunctionInfo:
     decorators: list[str]
     class_name: Optional[str] = None  # set if method inside a class
 
+
 @dataclass
 class ScanResult:
     missing_docstrings: list[FunctionInfo] = field(default_factory=list)
     missing_tests: list[FunctionInfo] = field(default_factory=list)
     skipped_files: list[str] = field(default_factory=list)
 
+
 def has_docstring(node) -> bool:
     return (
-        isinstance(node.body[0], ast.Expr)
-        and isinstance(node.body[0].value, ast.Constant)
-        and isinstance(node.body[0].value.value, str)
+            isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
     ) if node.body else False
+
 
 def extract_source(file_source: str, node: ast.AST) -> str:
     lines = file_source.splitlines()
-    return "\n".join(lines[node.lineno - 1 : node.end_lineno])
+    return "\n".join(lines[node.lineno - 1: node.end_lineno])
+
 
 def scan_file(file_path: str, skip_private: bool = False, skip_dunder: bool = True) -> list[FunctionInfo]:
     results = []
@@ -74,21 +81,17 @@ def scan_file(file_path: str, skip_private: bool = False, skip_dunder: bool = Tr
 
     return results
 
-def scan_project(root: str, skip_private=False, skip_dunder=True) -> ScanResult:
+
+def scan_project(root: str, test_dir_name: str, skip_private=False, skip_dunder=True) -> ScanResult:
     result = ScanResult()
-    for dirpath, _, filenames in os.walk(root):
-        for fname in filenames:
-            # TODO ignore test files here, or handle them separately
-            if fname.startswith("test_") and fname.endswith(".py"):
-                continue
-            if not fname.endswith(".py"):
-                continue
-            fpath = os.path.join(dirpath, fname)
-            infos = scan_file(fpath, skip_private, skip_dunder)
-            for info in infos:
-                if not info.has_docstring:
-                    result.missing_docstrings.append(info)
+    file_explorer = FileNavigator(root, test_dir_name).stream_files()
+    for fpath in file_explorer:
+        ast_info = scan_file(fpath, skip_private, skip_dunder)
+        for info in ast_info:
+            if not info.has_docstring:
+                result.missing_docstrings.append(info)
     return result
+
 
 def find_untested_functions(scan_result: ScanResult, test_dir: str) -> list[FunctionInfo]:
     """Find functions that have no corresponding test in test_dir."""
