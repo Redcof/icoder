@@ -32,23 +32,23 @@ class iCoderState(BaseModel):
 
 
 class iCoderFlow(Flow[iCoderState]):
-
+    
     def __init__(self, *args, **kwargs):
-        if "root_dir" in kwargs.keys():
-            self.root_dir = kwargs.pop("root_dir", None)
-        assert self.root_dir is not None, f"`root_dir` must be provided to {self.__class__.__name__}"
-        if "flow_test" in kwargs.keys():
-            self.flow_test = kwargs.pop("flow_test", False)
+        self.root_dir = kwargs.pop("root_dir", None)
+        self.language = kwargs.pop("language", "Python")
+        self.test_framework = kwargs.pop("test_framework", "pytest")
+        self.dry_run = kwargs.pop("dry_run", False)
+        assert self.root_dir is not None, "`root_dir` must be set"
         super().__init__(*args, **kwargs)
         self.generator = None
-
+    
     @staticmethod
     def save_file(content: str, file_path: str):
         try:
             open(file_path, "w").write(content)
         except Exception as e:
             raise e
-
+    
     def save_error_log(self, e, raw_output, prefix: str, file_path: str):
         self.state.error_counter += 1
         dest = self.get_module_structured_path(destination=FLOW_ERROR_DIR)
@@ -61,11 +61,11 @@ class iCoderFlow(Flow[iCoderState]):
                 open(error_log_path, "w").write(f"Error: {e}\n\n{raw_output}")
         except Exception as e:
             raise e
-
+    
     def update_documentation(self, documented_code: str):
         self.save_file(documented_code, self.state.current_file)
         self.state.file_flags.is_documented = True
-
+    
     def get_unitest_path(self) -> str:
         """For a given source path follow the same directory 
         structure but locate the testfile under tests/ directory. 
@@ -75,13 +75,13 @@ class iCoderFlow(Flow[iCoderState]):
         os.makedirs(test_dir, exist_ok=True)
         test_file_path = os.path.join(test_dir, f"test_{os.path.basename(self.state.current_file)}")
         return test_file_path
-
+    
     def get_module_structured_path(self, destination: str) -> str:
         """For a given source path follow the same directory 
         structure but locate the testfile under destination/ directory. 
         For example if the source file is project_root/src/module1/utils.py 
         then the test file will be located at project_root/destination/src/module1/test_utils.py"""
-
+        
         module_path = os.path.dirname(self.state.current_file)
         project_dir = self.root_dir
         if module_path.startswith(project_dir):
@@ -89,20 +89,20 @@ class iCoderFlow(Flow[iCoderState]):
         test_dir = os.path.join(project_dir, destination, module_path)
         os.makedirs(test_dir, exist_ok=True)
         return test_dir
-
+    
     def update_unittests(self, unittests_code: str):
         """For a given source path follow the same directory 
         structure but locate the testfile under tests/ directory. 
         For example if the source file is project_root/src/module1/utils.py 
         then the test file will be located at project_root/tests/src/module1/test_utils.py"""
-
+        
         test_file_path = self.get_unitest_path()
         self.save_file(unittests_code, test_file_path)
         self.state.file_flags.is_unittests_added = True
-
+    
     def reset_file_flags(self):
         self.state.file_flags = FileFlags()
-
+    
     @start()
     def process_project(self) -> str:
         self.generator = FileNavigator(self.root_dir, skip_test_dir="tests").stream_files()
@@ -110,7 +110,7 @@ class iCoderFlow(Flow[iCoderState]):
         error_dir = self.get_module_structured_path(
             destination=FLOW_ERROR_DIR)  # ensure flow_errors directory structure is created
         shutil.rmtree(error_dir) if os.path.exists(error_dir) else None
-
+    
     @router(or_(process_project, "NEXT"))
     def process_next_file(self) -> str:
         try:
@@ -121,7 +121,7 @@ class iCoderFlow(Flow[iCoderState]):
             return "SELECT"
         except StopIteration:
             return "END"
-
+    
     @router("SELECT")
     def check_file(self) -> str:
         if self.state.file_flags.is_valid_file:
@@ -129,7 +129,7 @@ class iCoderFlow(Flow[iCoderState]):
             return "CONTINUE"
         else:
             return "ERROR"
-
+    
     @listen("CONTINUE")
     def is_documentation_done(self):
         """Using interrogate verify if the current file is already well documented, 
@@ -145,47 +145,50 @@ class iCoderFlow(Flow[iCoderState]):
         except Exception as e:
             self.state.file_flags.is_documented = False
             self.save_error_log(e, None, "documentation_check", self.state.current_file)
-
+    
     @router(is_documentation_done)
     def documentation_task(self) -> str:
         raw_output = None
         try:
-            if self.flow_test is False:
+            if self.dry_run is False:
                 if not self.state.file_flags.is_documented:
                     raw_output = DocumentationCrew().crew().kickoff(
-                        inputs={"source_code": self.state.current_file_content})
+                        inputs={
+                            "source_code": self.state.current_file_content,
+                            "language": "Python",
+                        })
                     updated_content = raw_output.pydantic.content
                     self.update_documentation(updated_content)
             return "DOC_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "documentation", self.state.current_file)
             return "ERROR"
-
+    
     @listen("CONTINUE")
     def is_unittests_done(self) -> str:
         """Check if unittest already exists for the current file, if yes skip unittest task."""
         source_file = self.state.current_file
         test_file = self.get_unitest_path()
-
+        
         try:
             # 1. Initialize coverage, specifying which file to monitor
             # We use 'include' to ensure we only care about the target file
             cov = coverage.Coverage(include=[source_file])
-
+            
             # 2. Start measuring
             cov.start()
-
+            
             # 3. Run the tests via pytest
             # We pass the test_file path to pytest.main
             sys.path.insert(0, os.path.dirname(source_file))  # Ensure the test file's directory is in the path
             exit_code = pytest.main([test_file, "-q"])
             if exit_code != 0:
                 self.state.file_flags.is_unittests_added = False
-
+            
             # 4. Stop measuring
             cov.stop()
             cov.save()
-
+            
             if exit_code == 0:
                 # 5. Extract results
                 # This generates a summary of the coverage
@@ -195,34 +198,39 @@ class iCoderFlow(Flow[iCoderState]):
             # If any error occurs (e.g., test file doesn't exist, pytest error), we consider unittests not done
             self.state.file_flags.is_unittests_added = False
             self.save_error_log(e, None, "unittests_check", self.state.current_file)
-
+    
     @router(is_unittests_done)
     def unittest_task(self) -> str:
         raw_output = None
         try:
-            if self.flow_test is False:
+            if self.dry_run is False:
                 if not self.state.file_flags.is_unittests_added:
-                    raw_output = UnittestCrew().crew().kickoff(inputs={
-                        "source_code": self.state.current_file_content,
-                        "source_path": self.state.current_file.replace(self.root_dir, "").strip("/").strip("\\"),
-                    })
-                    updated_content = raw_output.pydantic.content
-                    self.update_unittests(updated_content)
+                    with open(self.get_unitest_path(), "r") as fp:
+                        raw_output = UnittestCrew().crew().kickoff(inputs={
+                            "source_path": self.state.current_file.replace(self.root_dir, ""),
+                            "source_code": self.state.current_file_content,
+                            "language": "Python",
+                            "test_framework": "pytest",
+                            "special_rule": "- For async functions, use @pytest.mark.asyncio",
+                            "unittest_code": fp.read(),
+                        })
+                        updated_content = raw_output.pydantic.content
+                        self.update_unittests(updated_content)
             return "TEST_DONE"
         except Exception as e:
             self.save_error_log(e, raw_output, "unittests", self.state.current_file)
             return "ERROR"
-
+    
     @router(and_("DOC_DONE", "TEST_DONE"))
     def move_next(self) -> str:
         return "NEXT"
-
+    
     @router("ERROR")
     def handle_error(self) -> str:
         # restore source code if any error occurs during documentation or unittest generation
         # self.save_file(self.state.current_file_content, self.state.current_file)
         return "END"
-
+    
     @listen("END")
     def finish(self):
         return dict(
@@ -256,20 +264,20 @@ def run_with_trigger():
     """
     import json
     import sys
-
+    
     # Get trigger payload from command line argument
     if len(sys.argv) < 2:
         raise Exception("No trigger payload provided. Please provide JSON payload as argument.")
-
+    
     try:
         trigger_payload = json.loads(sys.argv[1])
     except json.JSONDecodeError:
         raise Exception("Invalid JSON payload provided as argument")
-
+    
     # Create flow and kickoff with trigger payload
     # The @start() methods will automatically receive crewai_trigger_payload parameter
     poem_flow = iCoderFlow()
-
+    
     try:
         result = poem_flow.kickoff({"crewai_trigger_payload": trigger_payload})
         return result
@@ -280,9 +288,18 @@ def run_with_trigger():
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Path to the project directory to process")
-    parser.add_argument("project", metavar="path/to/project", help="The path to the project directory")
+    parser.add_argument("project", metavar="<path/to/project>", help="The path to the project directory")
+    parser.add_argument("-l", "--language", metavar="language", default="Python",
+                        help="Language names. e.g. Python, C++, Java",
+                        choices=["Python", "C", "C++", "Java"])
+    parser.add_argument("-f", "--test_framework", metavar="test-framework", default="pytest",
+                        help="A test framework name. e.g. pytest, gtest, junit",
+                        choices=["pytest", "gtest", "junit"])
     args = parser.parse_args()
-    flow = iCoderFlow(root_dir=args.project, flow_test=False)
+    flow = iCoderFlow(root_dir=args.project,
+                      language=args.language,
+                      test_framework=args.test_framework,
+                      dry_run=False)
     r = flow.kickoff()
     print("Run the commands below to check the unittests:")
     print(r['unittest_cmd'])

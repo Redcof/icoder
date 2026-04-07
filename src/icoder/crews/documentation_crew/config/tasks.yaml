@@ -1,16 +1,18 @@
 documentation_task:
   description: >
-    Using python input source code, generate high-quality Google-style docstrings 
-    for all identified functions and classes. Ensure technical accuracy 
-    based on the function's logic. Do not add docstrings to functions that already have them.
-    The source code may contain pre-documented functions. Add module-level docstring if missing.
-    Do not modify the pre-documented functions. Only add missing docstring.
+    Generate a Google-style docstring for the following {language} source code.
+    Rules:
+    - Generate module, class and function docstring if applicable
+    - Include Args, Returns, Raises sections if applicable
+    - Be concise but accurate
+    - Output ONLY the source code content
+    - Never output any explanation or additional interim details while sending result
+    - Output only the source code, ready to paste into a file
     
-    Here is python source code to be documented:
-
+    Source code:
     {source_code}
   expected_output: >
-    A structured content (JSON) with modified file content.
+    A structured content (JSON) with modified source code content.
   agent: documentation_specialist
 
 # verification_task:

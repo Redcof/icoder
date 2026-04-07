@@ -1,26 +1,25 @@
 testing_task:
   description: >
-    Generate pytest-compatible unit tests for all functions identified 
-    in the python source code. Make sure the unittests are runnable without
-    any error and additional modification.
-    Focus on edge cases and logic branches to maximize coverage.
-    Do not miss any function or class that requires testing.
-    You may find existing unittests while generating unittests.
-    Do not override the existing unittests. Do add necessary 
-    test cases. Ensure that the generated tests are robust and can effectively 
-    identify potential issues in the code. Add comment to the unitest
-    and explain its purpose. Make sure the unittests are runnable without
-    any error and additional modification.
-    This is very important, do not override the existing unittests. Do add necessary 
-    test cases.
-    Add proper import statement for the module being tested. While creating
-    the module imports refer the source path.
+    Generate {test_framework} unit tests for the following {language} function.
+    Rules:
+    - Use {test_framework} conventions (no unittest classes unless the source uses them)
+    - Include at least: one happy path, one edge case, one error/exception test if applicable
+    - Refer existing unit tests to identify the missing or insufficient test cases
+    - Use descriptive test function names (test_<function>_<scenario>)
+    - Add explainable and accurate docstring to the test cases
+    - Add mocks/patches where external dependencies are involved
+    - Add module import properly using source path
+    {special_rule}
+    - Output only the test code, ready to paste into a test file
 
-    Here is the source path to be use for module import: "{source_path}"
+    Source path: "{source_path}"
 
-    Here is python source code to:
-
+    Source code:
     {source_code}
+    
+    Existing unit tests:    
+    {unittest_code}
+
   expected_output: >
     A structured content (JSON) with the generated unittest source code.
   agent: test_engineer
