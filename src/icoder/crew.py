@@ -105,7 +105,7 @@ class iCoderFlow(Flow[iCoderState]):
 
     @start()
     def process_project(self) -> str:
-        self.generator = FileNavigator(self.root_dir, type_filter="*.py").stream_files()
+        self.generator = FileNavigator(self.root_dir, skip_test_dir="tests").stream_files()
         # remove previous error logs if any before starting the flow
         error_dir = self.get_module_structured_path(
             destination=FLOW_ERROR_DIR)  # ensure flow_errors directory structure is created

@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
 
     print("🔍 Scanning project...")
-    scan_result = scan_project(args.project_root, args.skip_private, args.skip_dunder)
+    scan_result = scan_project(args.project_root, args.test_dir, args.skip_private, args.skip_dunder)
     print(f"  Found {len(scan_result.missing_docstrings)} functions missing docstrings")
 
     untested = find_untested_functions(scan_result, os.path.join(args.project_root, args.test_dir))
