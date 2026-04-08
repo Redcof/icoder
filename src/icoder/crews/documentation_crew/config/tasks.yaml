@@ -5,6 +5,7 @@ documentation_task:
     - Generate module, class and function docstring if applicable
     - Include Args, Returns, Raises sections if applicable
     - Be concise but accurate
+    - Add module docstring if not present
     - Output ONLY the source code content
     - Never output any explanation or additional interim details while sending result
     - Output only the source code, ready to paste into a file

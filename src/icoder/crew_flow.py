@@ -253,7 +253,7 @@ def kickoff():
 
 
 def plot():
-    poem_flow = iCoderFlow(root_dir="sandbox", flow_test=True)
+    poem_flow = iCoderFlow(root_dir="sandbox", dry_run=True)
     r = poem_flow.plot()
     print(r)
 
@@ -301,6 +301,8 @@ def main():
                       test_framework=args.test_framework,
                       dry_run=False)
     r = flow.kickoff()
+    if r['error_count'] > 0:
+        raise Exception('To many errors, please check error logs')
     print("Run the commands below to check the unittests:")
     print(r['unittest_cmd'])
 
