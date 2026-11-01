@@ -1,6 +1,6 @@
 # iCoder
 
-A toolchain to help you analyze your codebase and generate documentation, unittests, and more.
+An Agentic AI toolchain to help you analyze your codebase and generate documentation, unittests, and more.
 
 > Author: Soumen Sardar |
 > Email: soumensardarintmain@gmail.com
